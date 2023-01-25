@@ -42,7 +42,7 @@ func New() *httpServerInstrumentor {
 }
 
 func (h *httpServerInstrumentor) LibraryName() string {
-	return "net/http"
+	return "net/http/server"
 }
 
 func (h *httpServerInstrumentor) FuncNames() []string {
@@ -147,13 +147,20 @@ func (h *httpServerInstrumentor) Run(eventsChan chan<- *events.Event) {
 			continue
 		}
 
-		eventsChan <- h.convertEvent(&event)
+		e := h.convertEvent(&event)
+		if e != nil {
+			eventsChan <- e
+		}
 	}
 }
 
 func (h *httpServerInstrumentor) convertEvent(e *HttpEvent) *events.Event {
 	method := unix.ByteSliceToString(e.Method[:])
 	path := unix.ByteSliceToString(e.Path[:])
+
+	if method == "" || path == "" {
+		return nil
+	}
 
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
 		TraceID:    e.SpanContext.TraceID,

@@ -80,6 +80,7 @@ int uprobe_server_handleStream(struct pt_regs *ctx) {
     u64 method_size = sizeof(grpcReq.method);
     method_size = method_size < method_len ? method_size : method_len;
     bpf_probe_read(&grpcReq.method, method_size, method_ptr);
+    bpf_printk("server_handleStream: grpc method: %s, stream_id: %d", grpcReq.method, stream_id);
 
     // Write event
     void *ctx_iface = 0;
@@ -124,6 +125,8 @@ int uprobe_server_handleStream_ByRegisters(struct pt_regs *ctx) {
     bpf_probe_read(&ctx_iface, sizeof(ctx_iface), (void*)(stream_ptr+stream_ctx_pos));
     void *ctx_instance = 0;
     bpf_probe_read(&ctx_instance, sizeof(ctx_instance), (void*)(ctx_iface+8));
+    void* r14_value = (void *)(ctx->r14);
+    bpf_printk("server_handleStream: stream_id: %d, ctx_instance: %x, r14_val: %x", stream_id, ctx_instance, r14_value);
     bpf_map_update_elem(&context_to_grpc_events, &ctx_instance, &grpcReq, 0);
     bpf_map_update_elem(&spans_in_progress, &ctx_instance, &grpcReq.sc, 0);
     return 0;
@@ -131,8 +134,10 @@ int uprobe_server_handleStream_ByRegisters(struct pt_regs *ctx) {
 
 SEC("uprobe/server_handleStream")
 int uprobe_server_handleStream_Returns(struct pt_regs *ctx) {
-    u64 stream_pos = 4;
-    void* stream_ptr = get_argument(ctx, stream_pos);
+//    u64 stream_pos = 4;
+//    void* stream_ptr = get_argument(ctx, stream_pos);
+    void* stream_ptr = 0;
+    bpf_probe_read(&stream_ptr, sizeof(stream_ptr), (void *)(ctx->rbp+0x24));
     void *ctx_iface = 0;
     bpf_probe_read(&ctx_iface, sizeof(ctx_iface), (void*)(stream_ptr+stream_ctx_pos));
     void *ctx_instance = 0;
@@ -141,6 +146,11 @@ int uprobe_server_handleStream_Returns(struct pt_regs *ctx) {
     void* grpcReq_ptr = bpf_map_lookup_elem(&context_to_grpc_events, &ctx_instance);
     struct grpc_request_t grpcReq = {};
     bpf_probe_read(&grpcReq, sizeof(grpcReq), grpcReq_ptr);
+
+    u32 stream_id = 0;
+    bpf_probe_read(&stream_id, sizeof(stream_id), (void*)(stream_ptr+stream_id_pos));
+    void* r14_value = (void *)(ctx->r14);
+    bpf_printk("server_handleStream returns: stream_id: %d, r14_val: %x", stream_id, r14_value);
 
     grpcReq.end_time = bpf_ktime_get_boot_ns();
     bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &grpcReq, sizeof(grpcReq));
@@ -152,6 +162,7 @@ int uprobe_server_handleStream_Returns(struct pt_regs *ctx) {
 // func (d *decodeState) decodeHeader(frame *http2.MetaHeadersFrame) error
 SEC("uprobe/decodeState_decodeHeader")
 int uprobe_decodeState_decodeHeader(struct pt_regs *ctx) {
+    bpf_printk("uprobe_decodeState_decodeHeader called");
     u64 frame_pos = 2;
     void* frame_ptr = get_argument(ctx, frame_pos);
     struct go_slice header_fields = {};
